@@ -1,86 +1,109 @@
-import os 
-from dotenv import load_dotenv
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
-from langchain_text_splitters import RecursiveCharacterTextSplitter 
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_groq import ChatGroq
-from langchain_community.vectorstores import FAISS
-from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnablePassthrough , RunnableParallel ,RunnableLambda
-from langchain_core.output_parsers import StrOutputParser
+import os
+from flask import Flask, request, jsonify, render_template, session
+from flask_session import Session
+from config import Config
+from transcript_processor import TranscriptProcessor
+from vector_store_manager import VectorStoreManager
+from rag_engine import RAGEngine
+import uuid
 
-load_dotenv()
+app = Flask(__name__)
+app.config.from_object(Config)
 
-video_id = "QCX62YJCmGk"  # only the ID, not full URL
+# Initialize Session
+Session(app)
 
-try:
-    # Create API instance
-    ytt_api = YouTubeTranscriptApi()
+# Initialize Managers
+vs_manager = VectorStoreManager()
+rag_engine = RAGEngine()
 
-    # Fetch transcript - returns the "best" available transcript
-    transcript_list = ytt_api.fetch(video_id, languages=["en"])
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-    # Flatten it to plain text
-    transcript = " ".join(item.text for item in transcript_list)
-    # print(transcript)
+@app.route('/chat')
+def chat():
+    # Only allow access if a video is being processed
+    if 'video_id' not in session:
+        return jsonify({"error": "No video processed"}), 400
+    return render_template('chat.html')
 
-except TranscriptsDisabled:
-    print("No captions available for this video.")
-except Exception as e:
-    print(f"Error: {e}")
+@app.route('/api/process-video', methods=['POST'])
+def process_video():
+    data = request.json
+    url = data.get('url')
+    
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+        
+    video_id = TranscriptProcessor.extract_video_id(url)
+    if not video_id:
+        return jsonify({"error": "Invalid YouTube URL"}), 400
+        
+    try:
+        # Fetch metadata and transcript
+        metadata = TranscriptProcessor.get_metadata(video_id)
+        transcript = TranscriptProcessor.get_transcript(video_id)
+        
+        # Create a unique session identifier for vector store
+        if 'session_id' not in session:
+            session['session_id'] = str(uuid.uuid4())
+            
+        # Create vector store for this session
+        vs_manager.create_vector_store(transcript, session['session_id'])
+        
+        # Store metadata in session
+        session['video_id'] = video_id
+        session['video_metadata'] = metadata
+        
+        return jsonify({
+            "status": "success",
+            "video_id": video_id,
+            "metadata": metadata
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # creating the chunks of the text 
+@app.route('/api/ask-question', methods=['POST'])
+def ask_question():
+    data = request.json
+    question = data.get('question')
+    
+    if not question:
+        return jsonify({"error": "Question is required"}), 400
+        
+    if 'session_id' not in session:
+        return jsonify({"error": "Session expired or no video processed"}), 401
+        
+    try:
+        # Load vector store for session
+        vector_store = vs_manager.load_vector_store(session['session_id'])
+        if not vector_store:
+            return jsonify({"error": "Vector store not found. Please re-process the video."}), 404
+            
+        # Get answer from RAG engine
+        answer = rag_engine.get_answer(vector_store, question)
+        
+        return jsonify({
+            "answer": answer
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-chunks = splitter.create_documents([transcript])
+@app.route('/api/video-metadata', methods=['GET'])
+def get_video_metadata():
+    if 'video_metadata' in session:
+        return jsonify(session['video_metadata'])
+    return jsonify({"error": "No video metadata found"}), 404
 
-# creating the embeddings 
-model_name = "sentence-transformers/all-MiniLM-L6-v2"
-model_kwargs = {'device': 'cpu'}
-encode_kwargs = {'normalize_embeddings': False}
-embeddings = HuggingFaceEmbeddings(
-    model_name=model_name,
-    model_kwargs=model_kwargs,
-    encode_kwargs=encode_kwargs
-)
+@app.route('/api/clear-session', methods=['DELETE'])
+def clear_session():
+    if 'session_id' in session:
+        vs_manager.delete_vector_store(session['session_id'])
+    session.clear()
+    return jsonify({"status": "session cleared"})
 
-# creating the vector store 
-vector_store = FAISS.from_documents(chunks, embeddings)
-
-# Reteriever 
-retriever = vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
-
-llm = ChatGroq(
-    groq_api_key=os.environ.get("GROK_API_KEY"),
-    model_name="llama-3.1-8b-instant", 
-    temperature=0.2
-)
-
-#creating the promopt 
-prompt = PromptTemplate(
-    template="""
-      You are a helpful assistant.
-      Answer ONLY from the provided transcript context.
-      If the context is insufficient, just say you don't know.
-
-      {context}
-      Question: {question}
-    """,
-    input_variables = ['context', 'question']
-)
-
-def format_docs(retrieved_docs):
-    context_text = "\n\n".join(doc.page_content for doc in retrieved_docs)
-    return context_text
-
-#creating the chains 
-parallel_chain = RunnableParallel ({
-    'question': RunnablePassthrough(),
-    "context": retriever | RunnableLambda(format_docs)
-})
-parser = StrOutputParser()
-
-main_chain = parallel_chain | prompt | llm | parser
-
-response = main_chain.invoke("summarize into 100 words")
-print(response)
+if __name__ == '__main__':
+    app.run(debug=True)
