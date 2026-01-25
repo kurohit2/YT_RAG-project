@@ -1,10 +1,11 @@
 import os
-from flask import Flask, request, jsonify, render_template, session
+from flask import Flask, request, jsonify, render_template, session, send_from_directory
 from flask_session import Session
 from config import Config
 from transcript_processor import TranscriptProcessor
 from vector_store_manager import VectorStoreManager
 from rag_engine import RAGEngine
+from infographic_generator import ReplicateInfographicGenerator, PollinationsGenerator, HuggingFaceGenerator
 import uuid
 
 app = Flask(__name__)
@@ -16,6 +17,7 @@ Session(app)
 # Initialize Managers
 vs_manager = VectorStoreManager()
 rag_engine = RAGEngine()
+infographic_gen = ReplicateInfographicGenerator()
 
 @app.route('/')
 def index():
@@ -55,6 +57,7 @@ def process_video():
         # Store metadata in session
         session['video_id'] = video_id
         session['video_metadata'] = metadata
+        session['transcript'] = transcript  # Store for infographic generation
         
         return jsonify({
             "status": "success",
@@ -92,6 +95,77 @@ def ask_question():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/generate-infographic', methods=['POST'])
+def generate_infographic():
+    """
+    Generates an infographic based on video summary using Replicate with fallbacks.
+    """
+    if 'video_id' not in session:
+        return jsonify({"error": "No video processed"}), 400
+    
+    data = request.json
+    style = data.get('style', 'notebooklm')
+    model = data.get('model', 'flux-schnell')
+    use_fallback = data.get('use_fallback', 'pollinations')
+    
+    try:
+        video_id = session['video_id']
+        
+        # Get a summary of the video first
+        vector_store = vs_manager.load_vector_store(session['session_id'])
+        if not vector_store:
+            return jsonify({"error": "Vector store not found"}), 404
+            
+        summary = rag_engine.get_answer(
+            vector_store, 
+            "Provide a brief 2-3 sentence summary covering the main topic and key points of this video. Use clear, descriptive language."
+        )
+        
+        # Try Replicate first
+        try:
+            filepath = infographic_gen.generate_and_save(summary, video_id, style, model)
+            
+            if filepath:
+                relative_path = f"/static/infographics/{video_id}_infographic.png"
+                return jsonify({
+                    "status": "success",
+                    "infographic_url": relative_path,
+                    "summary": summary,
+                    "generator": "replicate"
+                })
+        except Exception as replicate_error:
+            print(f"Replicate failed: {str(replicate_error)}")
+        
+        # Fallback to Pollinations or HuggingFace
+        if use_fallback == 'pollinations':
+            image = PollinationsGenerator.generate_infographic(summary, style)
+            if image:
+                filepath = PollinationsGenerator.save_infographic(image, video_id)
+                relative_path = f"/static/infographics/{video_id}_infographic.png"
+                return jsonify({
+                    "status": "success",
+                    "infographic_url": relative_path,
+                    "summary": summary,
+                    "generator": "pollinations"
+                })
+        else:
+            hf_gen = HuggingFaceGenerator()
+            image = hf_gen.generate_infographic(summary, style)
+            if image:
+                filepath = PollinationsGenerator.save_infographic(image, video_id)
+                relative_path = f"/static/infographics/{video_id}_infographic.png"
+                return jsonify({
+                    "status": "success",
+                    "infographic_url": relative_path,
+                    "summary": summary,
+                    "generator": "huggingface"
+                })
+        
+        return jsonify({"error": "All infographic generators failed"}), 500
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/video-metadata', methods=['GET'])
 def get_video_metadata():
     if 'video_metadata' in session:
@@ -104,6 +178,11 @@ def clear_session():
         vs_manager.delete_vector_store(session['session_id'])
     session.clear()
     return jsonify({"status": "session cleared"})
+
+# Serve static infographics
+@app.route('/static/infographics/<path:filename>')
+def serve_infographic(filename):
+    return send_from_directory(Config.INFOGRAPHICS_DIR, filename)
 
 if __name__ == '__main__':
     app.run(debug=True)

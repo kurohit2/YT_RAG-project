@@ -28,12 +28,26 @@ class TranscriptProcessor:
     @staticmethod
     def get_transcript(video_id):
         """
-        Fetches the transcript for a given video ID.
+        Fetches the transcript for a given video ID, preferring English but falling back to any available language.
         """
         try:
+            # Correct instance-based usage for this version
             api = YouTubeTranscriptApi()
-            transcript = api.fetch(video_id, languages=['en'])
-            return " ".join([t.text for t in transcript])
+            transcript_list = api.list(video_id)
+            
+            try:
+                # Try to get English transcript first (manual or generated)
+                transcript_data = transcript_list.find_transcript(['en'])
+            except:
+                # If English not found, get the first available transcript
+                # This will catch Hindi, Spanish, etc.
+                transcript_data = next(iter(transcript_list))
+                
+            fetched_transcript = transcript_data.fetch()
+            # fetched_transcript is a list of snippet objects (or dicts)
+            # Use a safe way to extract text that doesn't evaluate the default branch
+            return " ".join([t.text if hasattr(t, 'text') else t['text'] for t in fetched_transcript])
+            
         except TranscriptsDisabled:
             raise Exception("Transcripts are disabled for this video.")
         except Exception as e:
