@@ -2,150 +2,9 @@ import os
 import requests
 from io import BytesIO
 from PIL import Image
-import replicate
+import json
+import time
 from config import Config
-
-class ReplicateInfographicGenerator:
-    """
-    Uses Replicate API for high-quality infographic generation.
-    Models available: SDXL, Flux, Flux-Pro
-    """
-    
-    def __init__(self):
-        self.api_token = Config.REPLICATE_API_TOKEN
-        if self.api_token:
-            os.environ["REPLICATE_API_TOKEN"] = self.api_token
-    
-    def generate_infographic(self, summary_text, style="modern", model="flux-schnell"):
-        """
-        Generates an infographic using Replicate.
-        
-        Args:
-            summary_text: The summarized content from the video
-            style: Style of infographic (modern, minimalist, colorful, professional)
-            model: Which model to use:
-                   - "flux-schnell" (Fast, Free tier friendly)
-                   - "flux-dev" (Better quality)
-                   - "sdxl" (Stable Diffusion XL)
-        
-        Returns:
-            PIL Image object or None if failed
-        """
-        
-        # Style-specific prompts for NotebookLM-style infographics
-        style_prompts = {
-            "modern": """modern flat design infographic, clean geometric layout, vibrant gradient colors,
-                        minimal icons, rounded corners, contemporary design system, sans-serif typography,
-                        data visualization cards, modular grid layout""",
-            
-            "minimalist": """minimalist infographic design, white and light gray background, 
-                           simple line icons, clean sans-serif typography, elegant spacing,
-                           subtle shadows, monochromatic color scheme with one accent color,
-                           plenty of white space, professional and clean""",
-            
-            "colorful": """colorful vibrant infographic, gradient backgrounds, playful color palette,
-                          bold typography, illustrated icons, dynamic layout, eye-catching design,
-                          modern pastel colors, engaging visual elements, fun but professional""",
-            
-            "professional": """professional business infographic, corporate design, navy blue and white theme,
-                              clean structured layout, minimal icons, data charts and graphs,
-                              business presentation style, formal typography, credible and trustworthy design""",
-            
-            "notebooklm": """NotebookLM style infographic, soft pastel color palette, rounded card design,
-                           gentle gradients, modern sans-serif fonts, clean information hierarchy,
-                           subtle drop shadows, organized sections, contemporary UI design,
-                           friendly and approachable aesthetic, light background"""
-        }
-        
-        style_modifier = style_prompts.get(style, style_prompts["notebooklm"])
-        
-        # Build the complete prompt for infographic generation
-        prompt = f"""{style_modifier},
-infographic about: {summary_text[:250]},
-visual information design, diagram with icons and illustrations,
-clear visual hierarchy, organized sections and cards,
-professional graphic design, high quality, 8k resolution,
-no photographs, vector style graphics, educational illustration,
-information architecture, clean composition"""
-        
-        # Negative prompt to avoid unwanted elements
-        negative_prompt = """text, words, letters, paragraphs, written content, watermark, signature, 
-blurry, low quality, distorted, ugly, bad anatomy, photograph, realistic photo,
-cluttered, messy layout, too much information"""
-        
-        try:
-            # Model selection
-            model_versions = {
-                "flux-schnell": "black-forest-labs/flux-schnell",  # Fast & Free-tier friendly
-                "flux-dev": "black-forest-labs/flux-dev",          # Better quality
-                "sdxl": "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
-            }
-            
-            model_name = model_versions.get(model, model_versions["flux-schnell"])
-            
-            # Run the model
-            output = replicate.run(
-                model_name,
-                input={
-                    "prompt": prompt,
-                    "negative_prompt": negative_prompt,
-                    "width": 1024,
-                    "height": 1024,
-                    "num_outputs": 1,
-                    "guidance_scale": 7.5,
-                    "num_inference_steps": 28,
-                }
-            )
-            
-            # Download the generated image
-            if output:
-                image_url = output[0] if isinstance(output, list) else output
-                response = requests.get(image_url, timeout=30)
-                
-                if response.status_code == 200:
-                    image = Image.open(BytesIO(response.content))
-                    return image
-            
-            return None
-                
-        except Exception as e:
-            print(f"Exception in generate_infographic: {str(e)}")
-            return None
-    
-    def save_infographic(self, image, video_id, output_dir="static/infographics"):
-        """
-        Saves the generated infographic to disk.
-        
-        Args:
-            image: PIL Image object
-            video_id: YouTube video ID
-            output_dir: Directory to save images
-        
-        Returns:
-            Path to saved image
-        """
-        os.makedirs(output_dir, exist_ok=True)
-        
-        filepath = os.path.join(output_dir, f"{video_id}_infographic.png")
-        image.save(filepath, "PNG", quality=95, optimize=True)
-        
-        return filepath
-    
-    def generate_and_save(self, summary_text, video_id, style="notebooklm", model="flux-schnell"):
-        """
-        Complete workflow: generate and save infographic.
-        
-        Returns:
-            Path to saved image or None if failed
-        """
-        image = self.generate_infographic(summary_text, style, model)
-        
-        if image:
-            filepath = self.save_infographic(image, video_id)
-            return filepath
-        
-        return None
-
 
 # Alternative: Using Pollinations.ai (Completely Free, No API Key)
 class PollinationsGenerator:
@@ -194,6 +53,126 @@ class PollinationsGenerator:
         filepath = os.path.join(output_dir, f"{video_id}_infographic.png")
         image.save(filepath, "PNG", quality=95)
         return filepath
+
+
+# New: Bria.ai Generator (High Quality)
+class BriaInfographicGenerator:
+    """
+    Uses Bria.ai API for elite-quality infographic generation.
+    Supports high-resolution, commercial-grade visual content.
+    """
+    
+    def __init__(self):
+        self.api_token = Config.BRIA_API_KEY
+        self.base_url = "https://engine.prod.bria-api.com/v2"
+        # Base model endpoint
+        self.endpoint = f"{self.base_url}/text-to-image/base"
+        
+    def generate_infographic(self, summary_text, infographic_data=None, style="notebooklm"):
+        """
+        Generates an infographic using Bria.ai.
+        """
+        if not self.api_token:
+            print("Bria API token missing")
+            return None
+
+        # Process dynamic data
+        title = "Video Insights"
+        interface = "Modern Application"
+        themes = "Insight, Strategy, Innovation"
+        
+        if infographic_data:
+            title = infographic_data.get("title", title)
+            interface = infographic_data.get("interface", interface)
+            themes = infographic_data.get("themes", themes)
+
+        style_prompts = {
+            "notebooklm": f"""A professional, clean, modern business infographic layout titled '{title}'. 
+                           The design uses a flat vector illustration style with a soft pastel mint-green background. 
+                           The layout is organized into a two-column grid. On the left side, include a large data 
+                           visualization section featuring a colorful donut chart and a flowing, multi-layered wavy area graph. 
+                           In the center, a high-quality smartphone mockup displaying a {interface}. 
+                           On the right side, multiple small panels featuring minimalist icons for {themes}. 
+                           Use a vibrant color palette of coral red, lime green, and electric blue. 
+                           The typography should be bold, sans-serif, and highly legible. 
+                           The overall aesthetic is 'Corporate Memphis' but refined, professional, and data-driven. 
+                           2D digital art, high resolution, minimalist and scannable.""",
+            "modern": "modern flat design infographic, vibrant gradients, clean geometric cards",
+            "minimalist": "minimalist professional infographic, white space, simple line icons"
+        }
+        
+        prompt = style_prompts.get(style, style_prompts["notebooklm"])
+
+        negative_prompt = "text, words, letters, paragraphs, messy, cluttered, photograph, realistic, low quality, blurry"
+
+        headers = {
+            "api_token": self.api_token
+        }
+        
+        payload = {
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+            "aspect_ratio": "16:9",
+            "model": "bria-2.3",
+            "sync_mode": False
+        }
+
+        try:
+            # Bria V2+ is often asynchronous
+            response = requests.post(self.endpoint, headers=headers, json=payload, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                request_id = data.get("request_id")
+                status_url = data.get("status_url")
+                
+                if not status_url:
+                    # Maybe it returned the image directly in sync_mode or different version
+                    image_url = data.get("result", {}).get("url")
+                    if image_url:
+                        img_res = requests.get(image_url, timeout=30)
+                        return Image.open(BytesIO(img_res.content))
+                    return None
+
+                # Poll for completion
+                max_retries = 10
+                for _ in range(max_retries):
+                    status_res = requests.get(status_url, headers=headers, timeout=20)
+                    if status_res.status_code == 200:
+                        status_data = status_res.json()
+                        if status_data.get("status") == "completed":
+                            result_data = status_data.get("result", {})
+                            image_url = result_data.get("urls", [None])[0] or result_data.get("url")
+                            
+                            if image_url:
+                                img_res = requests.get(image_url, timeout=30)
+                                return Image.open(BytesIO(img_res.content))
+                            break
+                        elif status_data.get("status") == "failed":
+                            print(f"Bria generation failed: {status_data.get('error')}")
+                            break
+                    time.sleep(5)
+            else:
+                print(f"Bria API error: {response.status_code} - {response.text}")
+                
+            return None
+        except Exception as e:
+            print(f"Exception in Bria generator: {str(e)}")
+            return None
+
+    def save_infographic(self, image, video_id, output_dir="static/infographics"):
+        """Saves the generated infographic."""
+        os.makedirs(output_dir, exist_ok=True)
+        filepath = os.path.join(output_dir, f"{video_id}_infographic.png")
+        image.save(filepath, "PNG", quality=95, optimize=True)
+        return filepath
+
+    def generate_and_save(self, summary_text, video_id, infographic_data=None, style="notebooklm"):
+        """Complete workflow."""
+        image = self.generate_infographic(summary_text, infographic_data, style)
+        if image:
+            return self.save_infographic(image, video_id)
+        return None
 
 
 # Fallback: Hugging Face (Good free tier)

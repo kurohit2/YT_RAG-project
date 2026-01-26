@@ -29,11 +29,21 @@ class TranscriptProcessor:
     def get_transcript(video_id):
         """
         Fetches the transcript for a given video ID, preferring English but falling back to any available language.
+        Uses cookies.txt if available to bypass IP limits.
         """
+        import os
+        cookies_path = os.path.join(os.getcwd(), 'cookies.txt')
+        cookies = cookies_path if os.path.exists(cookies_path) else None
+        
         try:
             # Correct instance-based usage for this version
             api = YouTubeTranscriptApi()
-            transcript_list = api.list(video_id)
+            
+            if cookies:
+                print(f"Using cookies from {cookies_path}")
+                transcript_list = api.list(video_id, cookies=cookies)
+            else:
+                transcript_list = api.list(video_id)
             
             try:
                 # Try to get English transcript first (manual or generated)

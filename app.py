@@ -5,7 +5,7 @@ from config import Config
 from transcript_processor import TranscriptProcessor
 from vector_store_manager import VectorStoreManager
 from rag_engine import RAGEngine
-from infographic_generator import ReplicateInfographicGenerator, PollinationsGenerator, HuggingFaceGenerator
+from infographic_generator import PollinationsGenerator, HuggingFaceGenerator, BriaInfographicGenerator
 import uuid
 
 app = Flask(__name__)
@@ -17,7 +17,7 @@ Session(app)
 # Initialize Managers
 vs_manager = VectorStoreManager()
 rag_engine = RAGEngine()
-infographic_gen = ReplicateInfographicGenerator()
+infographic_gen = BriaInfographicGenerator()
 
 @app.route('/')
 def index():
@@ -120,19 +120,30 @@ def generate_infographic():
             vector_store, 
             "Provide a brief 2-3 sentence summary covering the main topic and key points of this video. Use clear, descriptive language."
         )
-        
-        # Try Replicate first
+        # New High-Quality Flow
         try:
-            filepath = infographic_gen.generate_and_save(summary, video_id, style, model)
+            # Extract high-quality metadata for the prompt
+            infographic_data = rag_engine.get_infographic_details(vector_store)
+            print(f"Extracted Infographic Data: {infographic_data}")
             
+            # Try Bria first (Primary) with the new template
+            filepath = infographic_gen.generate_and_save(summary, video_id, infographic_data, style)
             if filepath:
                 relative_path = f"/static/infographics/{video_id}_infographic.png"
                 return jsonify({
                     "status": "success",
                     "infographic_url": relative_path,
                     "summary": summary,
-                    "generator": "replicate"
+                    "generator": "bria",
+                    "details": infographic_data
                 })
+        except Exception as bria_error:
+            print(f"Bria failed: {str(bria_error)}")
+
+        # Try Replicate second
+        try:
+            # Replicate removed as per user request to focus on Bria
+            pass
         except Exception as replicate_error:
             print(f"Replicate failed: {str(replicate_error)}")
         
