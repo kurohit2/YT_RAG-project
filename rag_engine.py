@@ -9,7 +9,7 @@ from config import Config
 class RAGEngine:
     def __init__(self):
         self.llm = ChatGroq(
-            groq_api_key=Config.GROK_API_KEY,
+            groq_api_key=Config.GROQ_API_KEY,
             model_name=Config.LLM_MODEL,
             temperature=0.2
         )

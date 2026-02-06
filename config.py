@@ -5,8 +5,7 @@ load_dotenv()
 
 class Config:
     SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "dev-key-12345")
-    GROK_API_KEY = os.environ.get("GROK_API_KEY")
-    GROK_API_KEY = os.environ.get("GROK_API_KEY")
+    GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
     HUGGINGFACE_API_KEY = os.environ.get("HUGGINGFACE_API_KEY")
     BRIA_API_KEY = os.environ.get("BRIA_API_KEY")
     BRIA_API_KEY = os.environ.get("BRIA_API_KEY")
