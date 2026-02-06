@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 class Config:
     SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "dev-key-12345")
