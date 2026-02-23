@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat - YT RAG</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: false });
+        window.mermaid = mermaid;
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -69,21 +74,20 @@
                 </div>
             </div>
 
-            <!-- Generate Infographic Button -->
+            <!-- Generate Mind Map Button -->
             <div class="mt-6">
-                <button id="generateInfographicBtn" onclick="generateInfographic()"
+                <button id="generateMindMapBtn" onclick="generateMindMap()"
                     class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center space-x-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
-                    <span id="infographicBtnText">Generate Infographic</span>
+                    <span id="mindmapBtnText">Generate Mind Map</span>
                 </button>
 
-                <!-- Infographic Display Area -->
-                <div id="infographicContainer" class="hidden mt-4 bg-white border border-slate-200 rounded-xl p-4">
-                    <img id="infographicImage" src="" alt="Generated Infographic" class="w-full rounded-lg">
-                    <p id="infographicSummary" class="text-xs text-slate-600 mt-2"></p>
+                <!-- Mind Map Display Area -->
+                <div id="mindmapContainer" class="hidden mt-4 bg-white border border-slate-200 rounded-xl p-4 overflow-x-auto">
+                    <div id="mermaidDiv" class="mermaid flex justify-center"></div>
                 </div>
             </div>
 
@@ -133,47 +137,44 @@
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script>
-        // Infographic generation function
-        async function generateInfographic() {
-            const btn = document.getElementById('generateInfographicBtn');
-            const btnText = document.getElementById('infographicBtnText');
-            const container = document.getElementById('infographicContainer');
-            const image = document.getElementById('infographicImage');
-            const summary = document.getElementById('infographicSummary');
+        // Mind Map generation function
+        async function generateMindMap() {
+            const btn = document.getElementById('generateMindMapBtn');
+            const btnText = document.getElementById('mindmapBtnText');
+            const container = document.getElementById('mindmapContainer');
+            const mermaidDiv = document.getElementById('mermaidDiv');
 
-            // Disable button and show loading
             btn.disabled = true;
             btnText.textContent = 'Generating...';
 
             try {
-                const response = await fetch('/api/generate-infographic', {
+                const response = await fetch('/api/generate-mindmap', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        style: 'notebooklm',  // Options: notebooklm, modern, minimalist, colorful, professional
-                        model: 'flux-schnell',  // Options: flux-schnell, flux-dev, sdxl
-                        use_fallback: 'pollinations'  // Fallback if Replicate fails
-                    })
+                    headers: { 'Content-Type': 'application/json' }
                 });
 
                 const data = await response.json();
 
                 if (data.status === 'success') {
-                    // Show the infographic
-                    image.src = data.infographic_url + '?t=' + new Date().getTime(); // Cache bust
-                    summary.textContent = `Generated using ${data.generator}: ${data.summary}`;
                     container.classList.remove('hidden');
-                    btnText.textContent = 'Regenerate Infographic';
+                    mermaidDiv.innerHTML = data.mindmap_code;
+                    mermaidDiv.removeAttribute('data-processed');
+                    
+                    if (window.mermaid) {
+                        await window.mermaid.run({
+                            nodes: [mermaidDiv]
+                        });
+                    }
+                    
+                    btnText.textContent = 'Regenerate Mind Map';
                 } else {
-                    alert('Failed to generate infographic: ' + data.error);
-                    btnText.textContent = 'Generate Infographic';
+                    alert('Failed to generate mind map: ' + data.error);
+                    btnText.textContent = 'Generate Mind Map';
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error generating infographic');
-                btnText.textContent = 'Generate Infographic';
+                alert('Error generating mind map');
+                btnText.textContent = 'Generate Mind Map';
             } finally {
                 btn.disabled = false;
             }

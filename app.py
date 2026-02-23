@@ -7,6 +7,7 @@ from vector_store_manager import VectorStoreManager
 from rag_engine import RAGEngine
 from infographic_generator import PollinationsGenerator, HuggingFaceGenerator, BriaInfographicGenerator
 import uuid
+from mindmap_generator import GeminiMindMapGenerator
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -18,6 +19,7 @@ Session(app)
 vs_manager = VectorStoreManager()
 rag_engine = RAGEngine()
 infographic_gen = BriaInfographicGenerator()
+mindmap_gen = GeminiMindMapGenerator()
 
 @app.route('/')
 def index():
@@ -176,6 +178,40 @@ def generate_infographic():
             
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/generate-mindmap', methods=['POST'])
+def generate_mindmap():
+    """
+    Generates a mind map in Mermaid.js syntax using Gemini.
+    """
+    if 'video_id' not in session or 'transcript' not in session:
+        return jsonify({"error": "No video processed or transcript found"}), 400
+    
+    try:
+        transcript_text = session['transcript']
+        
+        # Extract plain text from transcript if it's a list of dicts
+        if isinstance(transcript_text, list):
+            plain_text = " ".join([entry.get('text', '') for entry in transcript_text])
+        else:
+            plain_text = transcript_text
+
+        mindmap_code = mindmap_gen.generate_mindmap(plain_text)
+        
+        if mindmap_code:
+            return jsonify({
+                "status": "success",
+                "mindmap_code": mindmap_code
+            })
+        else:
+            return jsonify({"error": "Failed to generate mindmap code"}), 500
+            
+    except Exception as e:
+        print(f"Flask API error: {str(e)}")
+        error_msg = str(e)
+        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+            error_msg = "Gemini API Quota Exceeded. Please try again in a few seconds."
+        return jsonify({"error": error_msg}), 500
 
 @app.route('/api/video-metadata', methods=['GET'])
 def get_video_metadata():

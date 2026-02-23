@@ -10,6 +10,7 @@ class Config:
     HUGGINGFACE_API_KEY = os.environ.get("HUGGINGFACE_API_KEY")
     BRIA_API_KEY = os.environ.get("BRIA_API_KEY")
     BRIA_API_KEY = os.environ.get("BRIA_API_KEY")
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
     
     # Session Configuration
     SESSION_TYPE = 'filesystem'
