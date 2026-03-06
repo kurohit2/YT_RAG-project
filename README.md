@@ -32,7 +32,6 @@ BRIA_API_KEY=your_bria_api_key_here
 FLASK_SECRET_KEY=generate_a_random_string_here
 ```
 
-⚠️ **Never commit `.env` file to GitHub!** It's already in `.gitignore`.
 
 ### 3. Install dependencies
 It is recommended to use a virtual environment:
